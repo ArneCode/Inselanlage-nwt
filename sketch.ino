@@ -23,6 +23,8 @@ const byte SOLAR_GES_V_PIN = A1;
 const byte CAP_V_PIN = A2;
 const byte gAkkustandPin=A3;
 
+const int ALERT_DURATION = 2000;
+
 const int beleuchtungsSpannung[2] = {
   300,
   810
@@ -47,7 +49,7 @@ bool is_alert = false;
 void display_alert(LcdString* animation, bool block_multiple = false) {
   //auto animation = new LcdDotAnim("Willkommen zur Inselanlage", &lcd);
   static unsigned long last_alert = -1;
-  if (millis() - last_alert < 3000 && block_multiple) {
+  if (millis() - last_alert < 5000 && block_multiple) {
     delete animation;
     return;
   }
@@ -85,6 +87,8 @@ bool sollLaden = true;
 bool sollNotstrom = false;
 bool istReihenschaltung = true;
 
+String mV = "mV";
+
 unsigned int rgbVerlaufsZeitRest;
 unsigned int ersterRgbVerlaufsZeitRest;
 void setup() {
@@ -105,10 +109,10 @@ void setup() {
   const int n_pages = 4;
   auto pages = new Page*[n_pages] {
     new DynamicContentPage("Solar L/R: ", []() {
-      return String(uSolarGes - uSolarRe) + "mV " + String(uSolarRe) + "mV";
+      return String(uSolarGes - uSolarRe) + mV + " " + String(uSolarRe) + mV;
     }),
     new DynamicContentPage("Sol Ges/Cap:", []() {
-      return String(uSolarGes) + "mV " + String(uKond) + "mV";
+      return String(uSolarGes) + mV+" " + String(uKond) + mV;
       }),
       /*
     new DynamicContentPage("Solar Ges:", []() {
@@ -266,11 +270,11 @@ void loop() {
     Serial.print("Auf ");
     if (istReihenschaltung) {
       Serial.print("Reihen");
-      display_alert(new LcdString("Reihen", &lcd, 1000));
+      display_alert(new LcdString("Reihen", &lcd, ALERT_DURATION));
     }
     else {
       Serial.print("Parallel");
-      display_alert(new LcdString("Parallel", &lcd, 1000));
+      display_alert(new LcdString("Parallel", &lcd, ALERT_DURATION));
     }
     Serial.println("schaltung umgestellt");
   } else if (taste == 'l') {
@@ -297,21 +301,22 @@ void loop() {
     Serial.print("Notstrom ");
     if (!sollNotstrom) {
       Serial.print("de");
-      display_alert(new LcdString("Notstrom aus", &lcd, 1000), true);
+      display_alert(new LcdString("Notstrom aus", &lcd, ALERT_DURATION), true);
       }else{
-        display_alert(new LcdString("Notstrom an", &lcd, 1000), true);
+        display_alert(new LcdString("Notstrom an", &lcd, ALERT_DURATION), true);
       }
     //else Serial.println("deaktiviert");
     Serial.println("aktiviert");
     //display_alert(new LcdString("Notstrom an", &lcd, 1000), true);
   }
+  else if(taste=='m')verbrenner();
 
   //Steuerung Laden von Kondensatoren
   if (sollNotstrom) {
-    if (uKond > 4000 || t1000) {
+    if (uKond > 4500 || t1000) {
       Serial.print("Notstrom ");
     }
-    if (uKond > 4000) {
+    if (uKond > 4500) {
       sollNotstrom = false;
       Serial.println("deaktiviert, Kondensator mehr als 4000mV");
       //display_alert(new LcdString("Notstrom deaktiviert", &lcd, 1000));
@@ -347,19 +352,19 @@ void loop() {
   } else analogWrite(beleuchtungsPin, 127.5 * beleuchtungsStufe);
   if (uKond < 500) {
     tone(lautsprecherPin, millis() % 1000 + 200);
-    display_alert(new LcdString("ALAAARM, SPEICHER LEER", &lcd, 1000), true);
+    display_alert(new LcdString("!ALARM, SPEICHER LEER!", &lcd, ALERT_DURATION), true);
   }
   else if (uKond < 750 && millis() / 1000 % 2 == 0) {
     tone(lautsprecherPin, millis() % 1000 + 200);
-    display_alert(new LcdString("ALARM, Speicher FAST LEER", &lcd, 1000), true);
+    display_alert(new LcdString("ALARM, SPEICHER "+uKond+String("mV") , &lcd, ALERT_DURATION), true);
   }
   else if (uKond < 1000 && millis() / 1000 % 2 == 0) {
     tone(lautsprecherPin, 400);
-    display_alert(new LcdString("Alarm, Speicher fast leer", &lcd, 1000), true);
+    display_alert(new LcdString("Alarm, Speicher fast leer", &lcd, ALERT_DURATION), true);
   }
   else if (uKond < 1250 && millis() / 1000 % 4 == 0) {
     tone(lautsprecherPin, 400);
-    display_alert(new LcdString("Speicher fast leer", &lcd, 1000), true);
+    display_alert(new LcdString("Speicher fast leer", &lcd, ALERT_DURATION), true);
   }
   else noTone(lautsprecherPin);
   if (feierBeleuchtungsStufe > 3)rgbVerblassend(1000 / pow(feierBeleuchtungsStufe - 3, 2));
@@ -413,6 +418,7 @@ void loop() {
   else if(wirdGeladen)digitalWrite(bAkkustandPin,1);
   else digitalWrite(bAkkustandPin,0);
 }
+
 void rgb(int rgbVerlaufsZeit) {
   if (millis() / rgbVerlaufsZeit % 3 == 0) {
     digitalWrite(bPin, 0);
@@ -471,4 +477,53 @@ void rgbVerblassend(int rgbVerlaufsZeit) {
     analogWrite(gPin, map(rgbVerlaufsZeitRest, ersterRgbVerlaufsZeitRest, rgbVerlaufsZeit - 1, 255, 0));
     rgbVerblassDurchlauf = 1;
   }
+}
+void verbrenner() {
+  delay(2000);
+  digitalWrite(ventilatorPin, 1);
+  delay(500);
+  analogWrite(ventilatorPin, 100);
+  delay(3000);
+  digitalWrite(ventilatorPin, 1);
+  delay(1200);
+  for (int i = 150; i < 256; i++) {
+    analogWrite(ventilatorPin, i);
+    delay(15);
+  }
+  delay(500);
+  for (int i = 170; i < 256; i++) {
+    analogWrite(ventilatorPin, i);
+    delay(25);
+  }
+  delay(400);
+  for (int i = 190; i < 256; i++) {
+    analogWrite(ventilatorPin, i);
+    delay(50);
+  }
+  delay(200);
+  for (int i = 200; i < 256; i++) {
+    analogWrite(ventilatorPin, i);
+    delay(100);
+  }
+  delay(1000);
+  for (int i = 255; i > 200; i--) {
+    analogWrite(ventilatorPin, i);
+    delay(50);
+  }
+  digitalWrite(ventilatorPin, 1);
+  delay(500);
+  for (int i = 255; i > 200; i--) {
+    analogWrite(ventilatorPin, i);
+    delay(40);
+  }
+  for (int i = 255; i > 150; i--) {
+    analogWrite(ventilatorPin, i);
+    delay(30);
+  }
+  for (int i = 255; i > 100; i--) {
+    analogWrite(ventilatorPin, i);
+    delay(10);
+  }
+  delay(3000);
+  digitalWrite(ventilatorPin, 0);
 }
